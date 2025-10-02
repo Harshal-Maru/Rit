@@ -4,10 +4,16 @@ use std::env;
 
 fn print_usage() {
     println!("Usage:");
-    println!("  rit init");
-    println!("  rit add <file>");
-    println!("  rit commit -m \"message\"");
+    println!("  rit init                       Initialize a new repository");
+    println!("  rit add <file>                 Add file to staging area");
+    println!("  rit commit -m \"message\"        commit staged changes");
+    println!("  rit log                        Show commit history");
+    println!("  rit ls-tree <hash>             List tree contents of a commit");
+    println!("  rit checkout <commit>          Checkout a specific commit");
+    println!("  rit branch                     List branches");
+    println!("  rit branch -c <name>           Create a new branch");
 }
+
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -68,6 +74,27 @@ fn main() {
                 eprintln!("Error checking out the commit: {}", e);
             }
         }
+        "branch" => {
+            if args.len() == 2 {
+                // Just `rit branch` → list branches
+                if let Err(e) = commands::branch::run(None, false) {
+                    eprintln!("Error: {}", e);
+                }
+            } else if args[2] == "-c" {
+                // `rit branch -c <name>` → create branch
+                if args.len() < 4 {
+                    eprintln!("Error: branch name required after -c");
+                    return;
+                }
+                let branch_name = &args[3];
+                if let Err(e) = commands::branch::run(Some(branch_name), true) {
+                    eprintln!("Error: {}", e);
+                }
+            } else {
+                eprintln!("Unknown usage of branch command");
+            }
+        }
+
         _ => {
             print_usage();
         }
