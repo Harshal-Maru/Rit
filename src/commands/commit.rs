@@ -1,8 +1,11 @@
 use sha1::{Digest, Sha1};
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::utils::{find_repo_root, write_object, update_head};
+
 
 pub fn run(message: &str) -> io::Result<()> {
     // 1. Locate repository root
@@ -39,23 +42,6 @@ pub fn run(message: &str) -> io::Result<()> {
     println!("[main {}] {}", &commit_hash[..7], message);
 
     Ok(())
-}
-
-/// Walk upward to find .rit
-fn find_repo_root() -> io::Result<std::path::PathBuf> {
-    let mut dir = std::env::current_dir()?;
-    loop {
-        let candidate = dir.join(".rit");
-        if candidate.exists() && candidate.is_dir() {
-            return Ok(candidate);
-        }
-        if !dir.pop() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Not a Rit repository",
-            ));
-        }
-    }
 }
 
 /// Read index and parse into Vec<(hash, path)>
@@ -136,30 +122,4 @@ fn build_commit_content(tree_hash: &str, parent_hash: Option<&str>, message: &st
     );
     content += message;
     content
-}
-
-/// Write object (blob/tree/commit) to .rit/objects/
-fn write_object(repo_path: &Path, hash: &str, data: &[u8]) -> io::Result<()> {
-    let (dir_name, file_name) = hash.split_at(2);
-    let obj_dir = repo_path.join("objects").join(dir_name);
-    fs::create_dir_all(&obj_dir)?;
-    let obj_path = obj_dir.join(file_name);
-    if !obj_path.exists() {
-        let mut file = fs::File::create(obj_path)?;
-        file.write_all(data)?;
-    }
-    Ok(())
-}
-
-/// Update HEAD reference to new commit
-fn update_head(repo_path: &Path, commit_hash: &str) -> io::Result<()> {
-    let head_path = repo_path.join("HEAD");
-    let content = fs::read_to_string(&head_path)?;
-    if content.starts_with("ref: ") {
-        let branch_path = repo_path.join(&content[5..].trim());
-        fs::write(branch_path, commit_hash)?;
-    } else {
-        // detached HEAD (not handled in Phase 1)
-    }
-    Ok(())
 }

@@ -43,6 +43,11 @@ fn main() {
                 eprintln!("Error committing: {}", e);
             }
         }
+        "log" => {
+            if let Err(e) = commands::log::run() {
+                eprintln!("Error Logging: {}", e);
+            }
+        }
         _ => {
             print_usage();
         }

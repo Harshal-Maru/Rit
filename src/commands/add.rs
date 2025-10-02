@@ -1,7 +1,9 @@
-use std::fs::{self, File, OpenOptions};
-use std::path::{Path, PathBuf};
+use std::fs::{self, OpenOptions};
+use std::path::{Path};
 use std::io::{self, Write};
 use sha1::{Sha1, Digest};
+
+use super::utils::{find_repo_root, write_object };
 
 pub fn run(file_path: &str) -> io::Result<()> {
     // 1. Locate repository root (.rit/)
@@ -33,36 +35,6 @@ pub fn run(file_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Locate .rit folder by walking up directories
-fn find_repo_root() -> io::Result<PathBuf> {
-    let mut dir = std::env::current_dir()?;
-    loop {
-        let candidate = dir.join(".rit");
-        if candidate.exists() && candidate.is_dir() {
-            return Ok(candidate);
-        }
-        if !dir.pop() { // reached filesystem root
-            return Err(io::Error::new(io::ErrorKind::NotFound, "Not a Rit repository"));
-        }
-    }
-}
-
-/// Write blob object to objects/ folder
-fn write_object(repo_path: &Path, hash: &str, data: &[u8]) -> io::Result<()> {
-    let (dir_name, file_name) = hash.split_at(2); // split into "aa", "bb..."
-    let obj_dir = repo_path.join("objects").join(dir_name);
-    fs::create_dir_all(&obj_dir)?;
-    
-    let obj_path = obj_dir.join(file_name);
-    
-    // Only write if it doesn't already exist
-    if !obj_path.exists() {
-        let mut file = File::create(obj_path)?;
-        file.write_all(data)?;
-    }
-    
-    Ok(())
-}
 
 /// Append <sha1> <filename> to index
 fn update_index(repo_path: &Path, hash: &str, file_path: &str) -> io::Result<()> {
