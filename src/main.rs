@@ -93,6 +93,11 @@ fn main() {
             } else {
                 eprintln!("Unknown usage of branch command");
             }
+        },
+        "status" =>{
+            if let Err(e) = commands::status::run() {
+                eprintln!("Error in Status: {}", e);
+            }
         }
 
         _ => {

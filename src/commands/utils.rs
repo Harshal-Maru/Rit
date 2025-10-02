@@ -11,7 +11,10 @@ pub fn find_repo_root() -> io::Result<PathBuf> {
             return Ok(candidate);
         }
         if !dir.pop() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "Not a Rit repository"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Not a Rit repository",
+            ));
         }
     }
 }
@@ -56,6 +59,25 @@ pub fn read_head_commit(repo_path: &Path) -> io::Result<Option<String>> {
     Ok(None)
 }
 
+pub fn get_current_branch() -> io::Result<Option<String>> {
+    let repo_root = find_repo_root()?;
+    let head_path = repo_root.join("HEAD");
+
+    // Read HEAD file as string
+    let head_content = fs::read_to_string(head_path)?;
+
+    if head_content.starts_with("ref: ") {
+        // Extract branch name from "ref: refs/heads/<branch>"
+        let branch = head_content
+            .trim_start_matches("ref: refs/heads/")
+            .trim()
+            .to_string();
+        Ok(Some(branch))
+    } else {
+        // Detached HEAD → contains a commit hash instead
+        Ok(None)
+    }
+}
 
 /// Update HEAD to point at new commit hash
 pub fn update_head(repo_path: &Path, commit_hash: &str) -> io::Result<()> {

@@ -7,3 +7,4 @@ pub(crate) mod utils;
 pub(crate) mod ls_tree;
 pub(crate) mod checkout;
 pub(crate) mod branch;
+pub(crate) mod status;
