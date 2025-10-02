@@ -49,9 +49,13 @@ pub fn read_head_commit(repo_path: &Path) -> io::Result<Option<String>> {
             let hash = fs::read_to_string(branch_path)?;
             return Ok(Some(hash.trim().to_string()));
         }
+    } else {
+        // detached HEAD
+        return Ok(Some(content.trim().to_string()));
     }
     Ok(None)
 }
+
 
 /// Update HEAD to point at new commit hash
 pub fn update_head(repo_path: &Path, commit_hash: &str) -> io::Result<()> {
