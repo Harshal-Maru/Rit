@@ -4,3 +4,4 @@ pub(crate) mod add;
 pub(crate) mod commit;
 pub(crate) mod log;
 pub(crate) mod utils;
+pub(crate) mod ls_tree;

@@ -48,6 +48,16 @@ fn main() {
                 eprintln!("Error Logging: {}", e);
             }
         }
+        "ls-tree" => {
+            if args.len() < 3 {
+                eprintln!("Error: specify a hash");
+                return;
+            }
+            let hash = &args[2];
+            if let Err(e) = commands::ls_tree::run(hash){
+                eprintln!("Error Printing ls tree: {}", e);
+            }
+        }
         _ => {
             print_usage();
         }
