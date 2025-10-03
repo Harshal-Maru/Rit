@@ -98,6 +98,16 @@ fn main() {
             if let Err(e) = commands::status::run() {
                 eprintln!("Error in Status: {}", e);
             }
+        },
+        "getconfig" =>{
+            if let Err(e) = commands::config::run("getconfig") {
+                eprintln!("Error in Status: {}", e);
+            }
+        },
+        "setconfig" => {
+            if let Err(e) = commands::config::run("setconfig") {
+                eprintln!("Error in Status: {}", e);
+            }
         }
 
         _ => {

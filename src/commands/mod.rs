@@ -8,3 +8,4 @@ pub(crate) mod ls_tree;
 pub(crate) mod checkout;
 pub(crate) mod branch;
 pub(crate) mod status;
+pub(crate) mod config;

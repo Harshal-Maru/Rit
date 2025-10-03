@@ -14,17 +14,29 @@ pub fn run() -> std::io::Result<()> {
         return Ok(());
     }
 
-    // Create objects and refs/heads directories
+    // Create objects and refs/heads directories 
     let objects_dir = rit_path.join("objects");
     let refs_heads_dir = rit_path.join("refs").join("heads");
+    
+
 
     create_dir_all(&objects_dir)?;
     create_dir_all(&refs_heads_dir)?;
+
 
     // Create HEAD file pointing to main branch
     let head_file_path = rit_path.join("HEAD");
     let mut head_file = File::create(head_file_path)?;
     head_file.write_all(b"ref: refs/heads/main")?;
+
+
+    // Create config file
+    let config_path = rit_path.join("config");
+    let mut config_file = File::create(config_path)?;
+    config_file.write_all(b"[user]\n")?;
+    config_file.write_all(b"  name  = Default Name\n")?;
+    config_file.write_all(b"  email = Default Email\n")?;
+
 
     println!("Rit repository successfully initialized");
     Ok(())
