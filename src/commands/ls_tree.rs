@@ -1,13 +1,11 @@
-use std::io;
-
 use super::utils::{find_repo_root, read_object};
+use std::io;
 
 pub fn run(hash: &str) -> io::Result<()> {
     let repo_path = find_repo_root()?;
 
     // 1. Read the object (commit or tree)
     let obj_data = read_object(&repo_path, hash)?;
-
     let mut tree_hash = hash.to_string();
 
     // Check if object is a commit (skip "commit <size>\0" header)
@@ -25,9 +23,10 @@ pub fn run(hash: &str) -> io::Result<()> {
             }
         }
     }
+
     // 2. Read tree object (already stripped header)
     let tree_data = read_object(&repo_path, &tree_hash)?;
-    let mut pos = 0; // start at beginning
+    let mut pos = 0;
 
     while pos < tree_data.len() {
         // Find end of mode+filename
@@ -54,7 +53,15 @@ pub fn run(hash: &str) -> io::Result<()> {
         let sha_bytes = &tree_data[sha_start..sha_end];
         let sha1 = hex::encode(sha_bytes);
 
-        println!("{} blob {}    {}", mode, sha1, filename);
+        // Determine object type based on mode
+        let obj_type = match mode {
+            "40000" => "tree",
+            "120000" => "symlink",
+            _ if mode.starts_with("100") => "blob",
+            _ => "blob", // default fallback
+        };
+
+        println!("{} {} {} {}", mode, obj_type, sha1, filename);
 
         pos = sha_end;
     }
