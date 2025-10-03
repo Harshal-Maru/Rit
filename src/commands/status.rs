@@ -1,7 +1,6 @@
-use super::utils::{find_repo_root, get_current_branch};
+use super::utils::{find_repo_root, get_current_branch,load_ritignore,is_ignored};
 use std::fs;
 use std::io;
-use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 pub fn run() -> io::Result<()> {
@@ -70,45 +69,4 @@ fn list_untracked(repo_root: &Path) -> io::Result<()> {
     }
 
     walk(repo_root, repo_root, &ignore_patterns)
-}
-
-/// Load ignore patterns from `.ritignore`
-fn load_ritignore(repo_root: &Path) -> io::Result<Vec<String>> {
-    let ignore_file = repo_root.join(".ritignore");
-    if !ignore_file.exists() {
-        return Ok(Vec::new());
-    }
-
-    let file = fs::File::open(ignore_file)?;
-    let reader = io::BufReader::new(file);
-
-    Ok(reader
-        .lines()
-        .filter_map(Result::ok)
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .collect())
-}
-
-/// Returns true if path matches any ignore pattern
-fn is_ignored(path: &Path, repo_root: &Path, ignores: &[String]) -> bool {
-    let rel = path.strip_prefix(repo_root).unwrap().to_string_lossy();
-
-    for pat in ignores {
-        if pat.ends_with('/') {
-            // directory match
-            if rel.starts_with(&pat[..pat.len() - 1]) {
-                return true;
-            }
-        } else if pat.starts_with("*.") {
-            // suffix match like *.lock
-            if rel.ends_with(&pat[1..]) {
-                return true;
-            }
-        } else if rel == *pat {
-            // exact match
-            return true;
-        }
-    }
-    false
 }

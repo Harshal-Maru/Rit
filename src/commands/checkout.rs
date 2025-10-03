@@ -41,42 +41,45 @@ pub fn run(target: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Restore tree object to given directory
+/// Recursively restores a tree to the filesystem
 fn restore_tree(repo_path: &Path, tree_hash: &str, target_dir: &Path) -> io::Result<()> {
     let tree_data = read_object(repo_path, tree_hash)?;
-
-    // Skip "tree <size>\0"
-    let null_pos = tree_data.iter().position(|&b| b == 0).unwrap();
-    let mut pos = null_pos + 1;
+    let mut pos = 0;
 
     while pos < tree_data.len() {
-        // Parse mode + filename until \0
+        // Find end of mode+filename (until null byte)
         let mut end = pos;
-        while tree_data[end] != 0 {
+        while end < tree_data.len() && tree_data[end] != 0 {
             end += 1;
         }
+
+        if end >= tree_data.len() {
+            break; // malformed tree entry
+        }
+
         let entry = String::from_utf8_lossy(&tree_data[pos..end]);
         let (mode, filename) = entry.split_once(' ').unwrap();
 
-        // SHA1 = 20 bytes after \0
+        // SHA1 = 20 bytes after null byte
         let sha_start = end + 1;
         let sha_end = sha_start + 20;
+        if sha_end > tree_data.len() {
+            break; // malformed SHA
+        }
         let sha_bytes = &tree_data[sha_start..sha_end];
         let sha1 = hex::encode(sha_bytes);
 
         let path = target_dir.join(filename);
 
         if mode == "40000" {
-            // Tree/subdirectory
+            // Directory → recurse
             fs::create_dir_all(&path)?;
             restore_tree(repo_path, &sha1, &path)?;
         } else {
-            // Blob/file
+            // Blob → write file directly
             let blob_data = read_object(repo_path, &sha1)?;
-            let null_pos = blob_data.iter().position(|&b| b == 0).unwrap();
-            let file_content = &blob_data[(null_pos + 1)..];
             let mut file = File::create(&path)?;
-            file.write_all(file_content)?;
+            file.write_all(&blob_data)?; // already stripped header
         }
 
         pos = sha_end;

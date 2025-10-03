@@ -14,7 +14,6 @@ fn print_usage() {
     println!("  rit branch -c <name>           Create a new branch");
 }
 
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -31,14 +30,15 @@ fn main() {
         }
         "add" => {
             if args.len() < 3 {
-                eprintln!("Error: specify a file to add");
+                eprintln!("Error: specify a file or directory to add");
                 return;
             }
-            let file_path = &args[2];
-            if let Err(e) = commands::add::run(file_path) {
-                eprintln!("Error adding file: {}", e);
+            let path = &args[2];
+            if let Err(e) = commands::add::run(path) {
+                eprintln!("Error adding '{}': {}", path, e);
             }
         }
+
         "commit" => {
             if args.len() < 4 || args[2] != "-m" {
                 eprintln!("Error: use commit -m \"message\"");
@@ -93,8 +93,8 @@ fn main() {
             } else {
                 eprintln!("Unknown usage of branch command");
             }
-        },
-        "status" =>{
+        }
+        "status" => {
             if let Err(e) = commands::status::run() {
                 eprintln!("Error in Status: {}", e);
             }
