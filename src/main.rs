@@ -33,6 +33,9 @@ fn main() {
             // `.as_deref()` is a perfect and concise way to do this conversion.
             commands::config::run(key, value.as_deref())
         }
+        // In src/main.rs -> inside the match &cli.command { ... } block
+
+        Commands::Remove { path, cached } => commands::remove::run(path, *cached),
     };
 
     if let Err(e) = result {
