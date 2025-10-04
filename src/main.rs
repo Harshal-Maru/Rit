@@ -1,117 +1,41 @@
-mod commands;
+// In your updated main.rs
 
-use std::env;
+mod cli;
+mod commands; // Add this module
 
-fn print_usage() {
-    println!("Usage:");
-    println!("  rit init                       Initialize a new repository");
-    println!("  rit add <file>                 Add file to staging area");
-    println!("  rit commit -m \"message\"        commit staged changes");
-    println!("  rit log                        Show commit history");
-    println!("  rit ls-tree <hash>             List tree contents of a commit");
-    println!("  rit checkout <commit>          Checkout a specific commit");
-    println!("  rit branch                     List branches");
-    println!("  rit branch -c <name>           Create a new branch");
-}
+use clap::Parser;
+use cli::{Cli, Commands};
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let cli = Cli::parse();
 
-    if args.len() < 2 {
-        print_usage();
-        return;
-    }
+    let result = match &cli.command {
+        Commands::Init => commands::init::run(),
+        Commands::Add { path } => commands::add::run(path),
+        Commands::Commit { message } => commands::commit::run(message),
+        Commands::Log => commands::log::run(),
+        Commands::LsTree { hash } => commands::ls_tree::run(hash),
+        Commands::Checkout { target } => commands::checkout::run(target),
+        Commands::Status => commands::status::run(),
 
-    match args[1].as_str() {
-        "init" => {
-            if let Err(e) = commands::init::run() {
-                eprintln!("Error: {}", e);
-            }
-        }
-        "add" => {
-            if args.len() < 3 {
-                eprintln!("Error: specify a file or directory to add");
-                return;
-            }
-            let path = &args[2];
-            if let Err(e) = commands::add::run(path) {
-                eprintln!("Error adding '{}': {}", path, e);
-            }
-        }
-
-        "commit" => {
-            if args.len() < 4 || args[2] != "-m" {
-                eprintln!("Error: use commit -m \"message\"");
-                return;
-            }
-            let message = &args[3];
-            if let Err(e) = commands::commit::run(message) {
-                eprintln!("Error committing: {}", e);
-            }
-        }
-        "log" => {
-            if let Err(e) = commands::log::run() {
-                eprintln!("Error Logging: {}", e);
-            }
-        }
-        "ls-tree" => {
-            if args.len() < 3 {
-                eprintln!("Error: specify a hash");
-                return;
-            }
-            let hash = &args[2];
-            if let Err(e) = commands::ls_tree::run(hash) {
-                eprintln!("Error Printing ls tree: {}", e);
-            }
-        }
-        "checkout" => {
-            if args.len() < 3 {
-                eprintln!("Error: specify a hash");
-                return;
-            }
-            let hash = &args[2];
-            if let Err(e) = commands::checkout::run(hash) {
-                eprintln!("Error checking out the commit: {}", e);
-            }
-        }
-        "branch" => {
-            if args.len() == 2 {
-                // Just `rit branch` → list branches
-                if let Err(e) = commands::branch::run(None, false) {
-                    eprintln!("Error: {}", e);
-                }
-            } else if args[2] == "-c" {
-                // `rit branch -c <name>` → create branch
-                if args.len() < 4 {
-                    eprintln!("Error: branch name required after -c");
-                    return;
-                }
-                let branch_name = &args[3];
-                if let Err(e) = commands::branch::run(Some(branch_name), true) {
-                    eprintln!("Error: {}", e);
-                }
+        Commands::Branch { create } => {
+            // Check if the -c flag was used
+            if let Some(branch_name) = create {
+                commands::branch::run(Some(branch_name), true) // Create branch
             } else {
-                eprintln!("Unknown usage of branch command");
-            }
-        }
-        "status" => {
-            if let Err(e) = commands::status::run() {
-                eprintln!("Error in Status: {}", e);
-            }
-        },
-        "getconfig" =>{
-            if let Err(e) = commands::config::run("getconfig") {
-                eprintln!("Error in Status: {}", e);
-            }
-        },
-        "setconfig" => {
-            if let Err(e) = commands::config::run("setconfig") {
-                eprintln!("Error in Status: {}", e);
+                commands::branch::run(None, false) // List branches
             }
         }
 
-        _ => {
-            print_usage();
+        Commands::Config { key, value } => {
+            // The `value` from clap is an Option<String>.
+            // We need to pass an Option<&str> to our run function.
+            // `.as_deref()` is a perfect and concise way to do this conversion.
+            commands::config::run(key, value.as_deref())
         }
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
     }
 }
