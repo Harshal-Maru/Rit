@@ -99,13 +99,22 @@ pub enum Commands {
     ///
     /// This can be used to unstage a file or to both unstage and delete a file
     /// from the working directory.
-    #[command(alias = "rm", after_help = "EXAMPLES:\n    rit rm --cached src/temp.log\n    rit rm src/mistake.txt")]
+    #[command(
+        alias = "rm",
+        after_help = "EXAMPLES:\n    rit rm --cached src/temp.log\n    rit rm src/mistake.txt"
+    )]
     Remove {
         /// The path of the file to remove from the index
         path: String,
 
         /// Use this flag to unstage the file but keep it on disk
-        #[arg(long,short)]
+        #[arg(long, short)]
         cached: bool,
+    },
+
+    /// Shows changes between the working tree and the index.
+    Diff {
+        /// The specific file to diff. If not provided, shows all changes.
+        path: Option<String>,
     },
 }

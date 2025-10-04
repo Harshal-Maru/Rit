@@ -34,8 +34,10 @@ fn main() {
             commands::config::run(key, value.as_deref())
         }
         // In src/main.rs -> inside the match &cli.command { ... } block
-
         Commands::Remove { path, cached } => commands::remove::run(path, *cached),
+
+        
+        Commands::Diff { path } => commands::diff::run(path.as_deref()),
     };
 
     if let Err(e) = result {
