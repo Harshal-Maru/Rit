@@ -36,7 +36,7 @@ Requires Rust 1.70 or later.
 
 ```bash
 git clone https://github.com/Harshal-Maru/Rit.git
-cd rit
+cd Rit
 cargo build --release
 
 # Optional: add to PATH
