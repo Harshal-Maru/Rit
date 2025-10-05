@@ -207,7 +207,7 @@ fn read_head(repo_path: &Path) -> io::Result<Option<String>> {
 }
 
 /// Build commit content string
-fn build_commit_content(tree_hash: &str, parent_hash: Option<&str>, message: &str) -> String {
+pub fn build_commit_content(tree_hash: &str, parent_hash: Option<&str>, message: &str) -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

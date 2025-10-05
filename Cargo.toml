@@ -1,5 +1,5 @@
 [package]
-name = "Rit"
+name = "rit"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,3 +11,4 @@ flate2 = "1.1.2"
 glob = "0.3.3"
 hex = "0.4.3"
 sha1 = "0.10.6"
+tempfile = "3.23.0"

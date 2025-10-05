@@ -117,4 +117,9 @@ pub enum Commands {
         /// The specific file to diff. If not provided, shows all changes.
         path: Option<String>,
     },
+
+    Merge {
+        /// The name of the branch to merge in
+        branch: String,
+    },
 }

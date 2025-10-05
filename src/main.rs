@@ -36,8 +36,9 @@ fn main() {
         // In src/main.rs -> inside the match &cli.command { ... } block
         Commands::Remove { path, cached } => commands::remove::run(path, *cached),
 
-        
         Commands::Diff { path } => commands::diff::run(path.as_deref()),
+        
+        Commands::Merge { branch } => commands::merge::run(branch),
     };
 
     if let Err(e) = result {

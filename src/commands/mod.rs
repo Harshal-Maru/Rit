@@ -11,3 +11,4 @@ pub(crate) mod status;
 pub(crate) mod config;
 pub (crate) mod remove;
 pub(crate) mod diff;
+pub(crate) mod merge;
