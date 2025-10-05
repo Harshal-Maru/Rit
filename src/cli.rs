@@ -118,6 +118,7 @@ pub enum Commands {
         path: Option<String>,
     },
 
+    /// Merge Different Branches
     Merge {
         /// The name of the branch to merge in
         branch: String,

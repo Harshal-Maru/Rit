@@ -15,7 +15,7 @@ pub fn run() -> io::Result<()> {
         
         // Split header from commit message
         let parts: Vec<&str> = content.splitn(2, "\n\n").collect();
-        let header_lines = parts.get(0).unwrap_or(&"");
+        let header_lines = parts.first().unwrap_or(&"");
         let message = parts.get(1).unwrap_or(&"");
 
         println!("commit {}", hash);
@@ -23,10 +23,10 @@ pub fn run() -> io::Result<()> {
         let mut parent: Option<String> = None;
 
         for line in header_lines.lines() {
-            if line.starts_with("tree ") {
-                println!("Tree: {}", &line[5..]);
-            } else if line.starts_with("parent ") {
-                parent = Some(line[7..].to_string());
+            if let Some(tree_hash) = line.strip_prefix("tree ") {
+                println!("Tree: {}", tree_hash);
+            } else if let Some(parent_hash) = line.strip_prefix("parent ") {
+                parent = Some(parent_hash.to_string());
             } else if line.starts_with("author ") {
                 println!("{}", line);
             }

@@ -1,11 +1,28 @@
+use super::utils::{find_repo_root, update_head, write_object};
 use sha1::{Digest, Sha1};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::collections::BTreeMap;
 
-use super::utils::{find_repo_root, update_head, write_object};
+// Helper function to read the .rit/config file
+fn read_config(repo_path: &Path) -> io::Result<HashMap<String, String>> {
+    let config_path = repo_path.join("config");
+    let mut config = HashMap::new();
+    if !config_path.exists() {
+        return Ok(config);
+    }
+
+    let content = fs::read_to_string(config_path)?;
+    for line in content.lines() {
+        // Simple key = value parser, ignores sections like [user]
+        if let Some((key, value)) = line.trim().split_once('=') {
+            config.insert(key.trim().to_string(), value.trim().to_string());
+        }
+    }
+    Ok(config)
+}
 
 pub(crate) struct IndexEntry {
     pub mode: String,
@@ -14,12 +31,12 @@ pub(crate) struct IndexEntry {
 }
 
 pub fn run(message: &str) -> io::Result<()> {
-    // 1. Locate repository root
+    // 1. Locate repository root and read config
     let repo_path = find_repo_root()?;
+    let config = read_config(&repo_path)?;
 
     // 2. Read the index
     let index_entries = read_index(&repo_path)?;
-
     if index_entries.is_empty() {
         println!("Nothing to commit");
         return Ok(());
@@ -31,22 +48,22 @@ pub fn run(message: &str) -> io::Result<()> {
     // 4. Get parent commit (if HEAD exists)
     let parent_hash = read_head(&repo_path)?;
 
-    // 5. Build commit object content
-    let commit_content = build_commit_content(tree_hash.as_str(), parent_hash.as_deref(), message);
+    // 5. Build commit object content, now passing the config
+    let commit_content = build_commit_content(&tree_hash, parent_hash.as_deref(), message, &config);
 
-    // 6. Hash commit object
+    // 6. Hash commit object to get its ID
     let mut hasher = Sha1::new();
     hasher.update(&commit_content);
     let commit_hash = hex::encode(hasher.finalize());
 
-    // 7. Write commit object to objects/
+    // 7. Write commit object to the object database
     write_object(&repo_path, &commit_hash, commit_content.as_bytes())?;
 
-    // 8. Update HEAD (branch reference)
+    // 8. Update HEAD (the current branch) to point at the new commit
     update_head(&repo_path, &commit_hash)?;
 
-    println!("[main {}] {}", &commit_hash[..7], message);
-
+    let current_branch = super::utils::get_current_branch()?.unwrap_or_else(|| "main".to_string());
+    println!("[{} {}] {}", current_branch, &commit_hash[..7], message);
     Ok(())
 }
 
@@ -56,36 +73,26 @@ pub fn read_index(repo_path: &Path) -> io::Result<Vec<IndexEntry>> {
     if !index_path.exists() {
         return Ok(Vec::new());
     }
-
     let data = fs::read_to_string(index_path)?;
     let mut entries = Vec::new();
-
     for line in data.lines() {
         if line.is_empty() {
             continue;
         }
-        
-        let parts: Vec<&str> = line.splitn(3, ' ').collect();
-        
-        let (mode, sha1, path) = if parts.len() == 2 {
-            // Format: <sha1> <path>
-            // Default mode to 100644 (regular file)
-            ("100644".to_string(), parts[0].to_string(), PathBuf::from(parts[1]))
-        } else if parts.len() == 3 {
-            // Format: <mode> <sha1> <path>
-            (parts[0].to_string(), parts[1].to_string(), PathBuf::from(parts[2]))
-        } else {
-            eprintln!("Warning: Skipping malformed line: '{}'", line);
-            continue;
-        };
-        
-        entries.push(IndexEntry { mode, sha1, path });
-    }
 
+        let parts: Vec<&str> = line.splitn(3, ' ').collect();
+        if parts.len() == 3 {
+            entries.push(IndexEntry {
+                mode: parts[0].to_string(),
+                sha1: parts[1].to_string(),
+                path: PathBuf::from(parts[2]),
+            });
+        }
+    }
     Ok(entries)
 }
 
-/// Build tree object recursively
+/// Build tree object recursively from a flat list of index entries
 pub fn write_tree(repo_path: &Path, index_entries: &[IndexEntry]) -> io::Result<String> {
     let entry_refs: Vec<&IndexEntry> = index_entries.iter().collect();
     build_tree_recursive(repo_path, &entry_refs, Path::new(""))
@@ -96,64 +103,45 @@ fn build_tree_recursive(
     entries: &[&IndexEntry],
     current_dir: &Path,
 ) -> io::Result<String> {
-    // Group entries by immediate child (file or directory)
     let mut files: Vec<&IndexEntry> = Vec::new();
     let mut subdirs: BTreeMap<String, Vec<&IndexEntry>> = BTreeMap::new();
 
-    for entry in entries.iter().copied() {
-        // Get relative path from current directory
-        let rel_path = if current_dir.as_os_str().is_empty() {
-            &entry.path
-        } else {
-            match entry.path.strip_prefix(current_dir) {
-                Ok(p) => p,
-                Err(_) => continue, // Not in this directory
-            }
-        };
+    for &entry in entries {
+        let rel_path = entry.path.strip_prefix(current_dir).unwrap();
+        let mut components = rel_path.components();
+        let first_component = components.next().unwrap().as_os_str().to_string_lossy();
 
-        // Check if this entry is directly in current_dir or in a subdirectory
-        let components: Vec<_> = rel_path.components().collect();
-        if components.len() == 1 {
-            // Direct file in current directory
+        if components.next().is_none() {
             files.push(entry);
-        } else if let Some(first) = components.first() {
-            // File in a subdirectory
-            let subdir_name = first.as_os_str().to_string_lossy().to_string();
-            subdirs.entry(subdir_name).or_default().push(entry);
+        } else {
+            subdirs
+                .entry(first_component.to_string())
+                .or_default()
+                .push(entry);
         }
     }
 
-    // Build tree content
     let mut tree_entries: Vec<(String, String, Vec<u8>)> = Vec::new();
-
-    // Add file entries
     for entry in files {
-        let filename = entry.path.file_name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid filename"))?
+        let filename = entry
+            .path
+            .file_name()
+            .unwrap()
             .to_string_lossy()
             .to_string();
-        
-        let sha_bytes = hex::decode(&entry.sha1)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        
+        let sha_bytes = hex::decode(&entry.sha1).map_err(io::Error::other)?;
         tree_entries.push((entry.mode.clone(), filename, sha_bytes));
     }
 
-    // Add subdirectory entries (recursively)
     for (subdir_name, subdir_entries) in subdirs {
         let subdir_path = current_dir.join(&subdir_name);
         let subtree_hash = build_tree_recursive(repo_path, &subdir_entries, &subdir_path)?;
-        
-        let sha_bytes = hex::decode(&subtree_hash)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        
+        let sha_bytes = hex::decode(&subtree_hash).map_err(io::Error::other)?;
         tree_entries.push(("40000".to_string(), subdir_name, sha_bytes));
     }
 
-    // Sort entries (Git requires this)
     tree_entries.sort_by(|a, b| a.1.cmp(&b.1));
 
-    // Build tree object content
     let mut tree_data = Vec::new();
     for (mode, name, sha_bytes) in tree_entries {
         tree_data.extend_from_slice(mode.as_bytes());
@@ -163,20 +151,15 @@ fn build_tree_recursive(
         tree_data.extend_from_slice(&sha_bytes);
     }
 
-    // Add tree header
     let header = format!("tree {}\0", tree_data.len());
     let mut obj_data = Vec::new();
     obj_data.extend_from_slice(header.as_bytes());
     obj_data.extend_from_slice(&tree_data);
 
-    // Compute SHA1
     let mut hasher = Sha1::new();
     hasher.update(&obj_data);
     let tree_hash = hex::encode(hasher.finalize());
-
-    // Write tree object
     write_object(repo_path, &tree_hash, &obj_data)?;
-
     Ok(tree_hash)
 }
 
@@ -186,51 +169,77 @@ fn read_head(repo_path: &Path) -> io::Result<Option<String>> {
     if !head_path.exists() {
         return Ok(None);
     }
-    
-    let content = fs::read_to_string(head_path)?;
-    let content = content.trim();
-    
-    if content.starts_with("ref: ") {
-        let ref_path = &content[5..];
+
+    let content = fs::read_to_string(head_path)?.trim().to_string();
+
+    if let Some(ref_path) = content.strip_prefix("ref: ") {
         let branch_path = repo_path.join(ref_path);
-        
         if branch_path.exists() {
-            let hash = fs::read_to_string(branch_path)?;
-            return Ok(Some(hash.trim().to_string()));
+            let hash = fs::read_to_string(branch_path)?.trim().to_string();
+            if hash.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(hash))
+            }
+        } else {
+            Ok(None) // Branch file doesn't exist yet
         }
     } else if content.len() == 40 {
-        // Direct SHA1 (detached HEAD)
-        return Ok(Some(content.to_string()));
+        Ok(Some(content)) // Detached HEAD
+    } else {
+        Ok(None)
     }
-    
-    Ok(None)
 }
 
-/// Build commit content string
-pub fn build_commit_content(tree_hash: &str, parent_hash: Option<&str>, message: &str) -> String {
+/// Build commit content string using author info from config
+pub fn build_commit_content(
+    tree_hash: &str,
+    parent_hash: Option<&str>,
+    message: &str,
+    config: &HashMap<String, String>,
+) -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
+
+    let author_name = config
+        .get("name")
+        .cloned()
+        .unwrap_or_else(|| "User".to_string());
+    let author_email = config
+        .get("email")
+        .cloned()
+        .unwrap_or_else(|| "user@example.com".to_string());
+
+    let author_line = format!(
+        "author {} <{}> {} +0530",
+        author_name, author_email, timestamp
+    );
+    let committer_line = format!(
+        "committer {} <{}> {} +0530",
+        author_name, author_email, timestamp
+    );
+
     let mut content = String::new();
     content.push_str(&format!("tree {}\n", tree_hash));
-    
+
     if let Some(parent) = parent_hash {
-        content.push_str(&format!("parent {}\n", parent));
+        // This logic handles both single parents (just a hash) and
+        // merge commits (which pass a pre-formatted string with multiple "parent .." lines)
+        if parent.contains("parent ") {
+            content.push_str(parent);
+        } else {
+            content.push_str(&format!("parent {}\n", parent));
+        }
     }
-    
-    content.push_str(&format!(
-        "author Harshal <harshal@example.com> {} +0530\n",
-        timestamp
-    ));
-    content.push_str(&format!(
-        "committer Harshal <harshal@example.com> {} +0530\n",
-        timestamp
-    ));
-    content.push_str("\n");
+
+    content.push_str(&author_line);
+    content.push('\n');
+    content.push_str(&committer_line);
+    content.push('\n');
+    content.push('\n');
     content.push_str(message);
-    
+
     content
 }
-

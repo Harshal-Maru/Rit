@@ -11,11 +11,11 @@ pub fn run(branch_name: &str) -> io::Result<()> {
 
     // --- 1. SETUP: Get commit hashes for both branches ---
     let current_branch = get_current_branch()?.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::Other, "HEAD is detached, cannot merge")
+        io::Error::other("HEAD is detached, cannot merge")
     })?;
 
     let receiver_hash = read_head_commit(&repo_root)?.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::Other, "Current branch has no commits")
+        io::Error::other("Current branch has no commits")
     })?;
 
     let giver_branch_path = repo_root.join("refs").join("heads").join(branch_name);
@@ -29,7 +29,7 @@ pub fn run(branch_name: &str) -> io::Result<()> {
 
     // --- 2. FIND ANCESTOR: Find the most recent common ancestor of the two commits ---
     let ancestor_hash = find_common_ancestor(&repo_root, &receiver_hash, &giver_hash)?.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::Other, "No common ancestor found")
+        io::Error::other("No common ancestor found")
     })?;
 
     // --- 3. HANDLE MERGE SCENARIOS ---
@@ -45,7 +45,7 @@ pub fn run(branch_name: &str) -> io::Result<()> {
         println!("Fast-forward merge. Updated branch '{}' to '{}'.", current_branch, &giver_hash[..7]);
         // TODO: Update working directory
 
-        
+
 
         return Ok(());
     }
@@ -69,7 +69,8 @@ pub fn run(branch_name: &str) -> io::Result<()> {
     parents.push_str(&format!("parent {}\n", receiver_hash));
     parents.push_str(&format!("parent {}\n", giver_hash));
 
-    let commit_content = build_commit_content(&merged_tree_hash, Some(&parents), &commit_message);
+    let extra_headers = HashMap::new();
+    let commit_content = build_commit_content(&merged_tree_hash, Some(&parents), &commit_message, &extra_headers);
 
     let mut hasher = Sha1::new();
     hasher.update(&commit_content);
@@ -200,21 +201,20 @@ fn merge_trees(
 
             // CONFLICTS
             (Some(_), Some(r), Some(g)) if r.1 != g.1 => { // Modified differently
-                 return Err(io::Error::new(io::ErrorKind::Other, format!("Merge conflict in {}", path.display())));
+                 return Err(io::Error::other(format!("Merge conflict in {}", path.display())));
             }
             (None, Some(_), Some(_)) => { // Both added same file with different content
-                return Err(io::Error::new(io::ErrorKind::Other, format!("Merge conflict: both added {}", path.display())));
+                return Err(io::Error::other(format!("Merge conflict: both added {}", path.display())));
             }
             (Some(_), Some(_), None) => { // Receiver modified, giver deleted
-                return Err(io::Error::new(io::ErrorKind::Other, format!("Merge conflict: {} modified and deleted", path.display())));
+                return Err(io::Error::other(format!("Merge conflict: {} modified and deleted", path.display())));
             }
             (Some(_), None, Some(_)) => { // Giver modified, receiver deleted
-                return Err(io::Error::new(io::ErrorKind::Other, format!("Merge conflict: {} modified and deleted", path.display())));
+                return Err(io::Error::other(format!("Merge conflict: {} modified and deleted", path.display())));
             }
 
             // Default to receiver's version if logic is incomplete
             (_, Some(r), _) => { merged_entries.insert(path, r.clone()); }
-            (_, _, Some(g)) => { merged_entries.insert(path, g.clone()); }
             _ => {}
         }
     }

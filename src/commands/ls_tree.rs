@@ -1,68 +1,46 @@
-use super::utils::{find_repo_root, read_object};
+use super::utils::{find_repo_root, read_full_object, read_object};
 use std::io;
 
 pub fn run(hash: &str) -> io::Result<()> {
     let repo_path = find_repo_root()?;
-
-    // 1. Read the object (commit or tree)
-    let obj_data = read_object(&repo_path, hash)?;
     let mut tree_hash = hash.to_string();
 
-    // Check if object is a commit (skip "commit <size>\0" header)
-    let content = String::from_utf8_lossy(&obj_data);
-    if content.starts_with("tree ") || content.starts_with("commit ") {
-        // Skip header if commit object
-        let null_pos = obj_data.iter().position(|&b| b == 0).unwrap_or(0);
-        let body = &obj_data[null_pos + 1..];
-        let body_str = String::from_utf8_lossy(body);
+    // 1. Read the full object data to inspect its header.
+    let full_obj_data = read_full_object(&repo_path, hash)?;
+    let obj_str = String::from_utf8_lossy(&full_obj_data);
 
-        for line in body_str.lines() {
-            if line.starts_with("tree ") {
-                tree_hash = line[5..].to_string();
-                break;
-            }
+    // 2. If it's a commit object, parse it to find the tree hash.
+    if obj_str.starts_with("commit ")
+        && let Some(pos) = full_obj_data.iter().position(|&b| b == 0) {
+            let body = String::from_utf8_lossy(&full_obj_data[pos + 1..]);
+            tree_hash = body
+                .lines()
+                .find(|line| line.starts_with("tree "))
+                .map(|line| line[5..].to_string())
+                .ok_or_else(|| io::Error::other("Commit object is missing a tree"))?;
         }
-    }
 
-    // 2. Read tree object (already stripped header)
+    // 3. Read the tree object's *content* (without header) to parse entries.
     let tree_data = read_object(&repo_path, &tree_hash)?;
     let mut pos = 0;
-
     while pos < tree_data.len() {
-        // Find end of mode+filename
         let mut end = pos;
-        while end < tree_data.len() && tree_data[end] != 0 {
-            end += 1;
-        }
-
-        if end >= tree_data.len() {
-            break; // malformed entry
-        }
+        while end < tree_data.len() && tree_data[end] != 0 { end += 1; }
+        if end >= tree_data.len() { break; }
 
         let entry = String::from_utf8_lossy(&tree_data[pos..end]);
         let (mode, filename) = entry.split_once(' ').unwrap();
 
         let sha_start = end + 1;
         let sha_end = sha_start + 20;
-
-        if sha_end > tree_data.len() {
-            eprintln!("Warning: tree entry '{}' has invalid SHA1 length", filename);
-            break;
-        }
+        if sha_end > tree_data.len() { break; }
 
         let sha_bytes = &tree_data[sha_start..sha_end];
         let sha1 = hex::encode(sha_bytes);
+        
+        let obj_type = if mode == "40000" { "tree" } else { "blob" };
 
-        // Determine object type based on mode
-        let obj_type = match mode {
-            "40000" => "tree",
-            "120000" => "symlink",
-            _ if mode.starts_with("100") => "blob",
-            _ => "blob", // default fallback
-        };
-
-        println!("{} {} {} {}", mode, obj_type, sha1, filename);
-
+        println!("{} {} {}\t{}", mode, obj_type, sha1, filename);
         pos = sha_end;
     }
 

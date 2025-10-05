@@ -34,19 +34,6 @@ pub fn write_object(repo_path: &Path, hash: &str, data: &[u8]) -> io::Result<()>
     Ok(())
 }
 
-/// Read object by hash (decompressed and strip header)
-pub fn read_object(repo_path: &Path, hash: &str) -> io::Result<Vec<u8>> {
-    let (dir_name, file_name) = hash.split_at(2);
-    let obj_path = repo_path.join("objects").join(dir_name).join(file_name);
-    let data = read_compressed(&obj_path)?;
-
-    // Strip header: "<type> <size>\0"
-    if let Some(pos) = data.iter().position(|&b| b == 0) {
-        Ok(data[pos + 1..].to_vec()) // return only content
-    } else {
-        Ok(data) // fallback: no header found
-    }
-}
 
 /// Get the current commit hash from HEAD (if any)
 pub fn read_head_commit(repo_path: &Path) -> io::Result<Option<String>> {
@@ -55,8 +42,8 @@ pub fn read_head_commit(repo_path: &Path) -> io::Result<Option<String>> {
         return Ok(None);
     }
     let content = fs::read_to_string(head_path)?;
-    if content.starts_with("ref: ") {
-        let branch_path = repo_path.join(&content[5..].trim());
+    if let Some(stripped) = content.strip_prefix("ref: ") {
+        let branch_path = repo_path.join(stripped.trim());
         if branch_path.exists() {
             let hash = fs::read_to_string(branch_path)?;
             return Ok(Some(hash.trim().to_string()));
@@ -89,8 +76,8 @@ pub fn get_current_branch() -> io::Result<Option<String>> {
 pub fn update_head(repo_path: &Path, commit_hash: &str) -> io::Result<()> {
     let head_path = repo_path.join("HEAD");
     let content = fs::read_to_string(&head_path)?;
-    if content.starts_with("ref: ") {
-        let branch_path = repo_path.join(&content[5..].trim());
+    if let Some(stripped) = content.strip_prefix("ref: ") {
+        let branch_path = repo_path.join(stripped.trim());
         fs::write(branch_path, commit_hash)?;
     }
     Ok(())
@@ -126,7 +113,7 @@ pub fn load_ritignore(repo_path: &Path) -> io::Result<Vec<String>> {
 
     Ok(reader
         .lines()
-        .filter_map(Result::ok)
+        .map_while(Result::ok)
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .collect())
@@ -156,15 +143,12 @@ pub fn is_ignored(path: &Path, repo_path: &Path, ignores: &[String]) -> bool {
             continue;
         }
 
-        if pat.ends_with('/') {
+        if let Some(dir_name) = pat.strip_suffix('/') {
             // directory pattern - check if path is inside this directory
-            let dir_name = &pat[..pat.len()-1];
-            
             // Check if the path starts with the directory name
-            if normalized_path.starts_with(dir_name) {
+            if let Some(after_dir) = normalized_path.strip_prefix(dir_name) {
                 // Make sure it's actually inside the directory
                 // (e.g., "target/foo" matches "target/", but "targetfoo" doesn't)
-                let after_dir = &normalized_path[dir_name.len()..];
                 if after_dir.is_empty() || after_dir.starts_with('/') || after_dir.starts_with('\\') {
                     return true;
                 }
@@ -189,4 +173,22 @@ pub fn is_ignored(path: &Path, repo_path: &Path, ignores: &[String]) -> bool {
     }
 
     false
+}
+
+/// Reads an object's full, raw data including the header.
+pub fn read_full_object(repo_path: &Path, hash: &str) -> io::Result<Vec<u8>> {
+    let (dir_name, file_name) = hash.split_at(2);
+    let obj_path = repo_path.join("objects").join(dir_name).join(file_name);
+    read_compressed(&obj_path)
+}
+
+// Your existing read_object function is still correct for other uses
+pub fn read_object(repo_path: &Path, hash: &str) -> io::Result<Vec<u8>> {
+    let data = read_full_object(repo_path, hash)?; // Reuse the new function
+    // Strip header: "<type> <size>\0"
+    if let Some(pos) = data.iter().position(|&b| b == 0) {
+        Ok(data[pos + 1..].to_vec()) // return only content
+    } else {
+        Ok(data) // fallback: no header found
+    }
 }
